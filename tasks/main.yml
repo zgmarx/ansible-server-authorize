@@ -1,0 +1,46 @@
+---
+- name: add remote server's ssh fingerprint to known_hosts
+  ignore_errors: yes
+  local_action: command ssh -tt -o StrictHostKeyChecking=no -o PasswordAuthentication=no -p 22 root@{{ inventory_hostname }} "hostname"
+
+- name: install libselinux-python
+  yum:
+    name: libselinux-python
+    state: present
+
+# add ansible server ssh pub key to remote servers
+- authorized_key:
+    user: root
+    key: "{{ lookup('file', '/root/.ssh/id_rsa.pub') }}"
+
+# config /etc/ssh/sshd_config
+- name: sshd_config set UseDNS
+  lineinfile:
+    dest: /etc/ssh/sshd_config
+    regexp: "^UseDNS(.*)"
+    line: "{{ usedns }}"
+  register: set_usedns
+
+- service:
+    name: sshd
+    state: restarted
+  when: set_usedns|changed
+
+- wait_for:
+    port: 22
+    delay: 1
+
+- name: sshd_config set GSSAPI
+  lineinfile:
+    dest: /etc/ssh/sshd_config
+    regexp: "^GSSAPI(.*)"
+    state: absent
+  when: gssapi
+  register: set_gssapi
+
+- service:
+    name: sshd
+    state: restarted
+  when: set_gssapi|changed
+
+# vim: sw=2 ft=ansible
